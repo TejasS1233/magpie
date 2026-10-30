@@ -68,7 +68,7 @@ A manager's install must put its hook in the repository's own `$(git rev-parse -
 
 The fix is an **install strategy**, applied by [`hook-manager-shim.sh`](../agent-isolation/hook-manager-shim.sh), installed as `~/.claude/bin/<tool>` ahead of the real binary on `PATH`.
 The shim takes the tool from the name it is installed under, rewrites only the install action, and passes every other invocation through unchanged.
-A positional action (`prek install`) is only the first argument; a flag-style action (`overcommit --install`) and its registry aliases (`overcommit -i`) are found anywhere in argv.
+A positional action (`prek install`) is only the first argument; a flag-style action (`overcommit --install`) and its registry aliases (`overcommit -i`) are found anywhere in argv, including a single-letter alias inside a bundle of short switches (`-fi`) and a long flag shortened to three letters or more (`--inst`).
 It leaves the install alone when the caller already chose a target, asked for help, or is not in a git work tree.
 
 | Strategy | What the shim does | Status |

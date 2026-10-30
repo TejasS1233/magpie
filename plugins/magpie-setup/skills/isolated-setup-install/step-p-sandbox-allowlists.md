@@ -348,7 +348,8 @@ for the full rationale + the validated behaviour matrix.
    `--git-dir "$(git rev-parse --git-common-dir)"` unless the caller
    already passed `--git-dir`, asked for `--help`, or is outside a
    git work tree); for overcommit it rewrites only
-   `overcommit --install`, pointing `core.hooksPath` at
+   `overcommit --install` (or `-i`, `-fi`, `--inst`, anywhere in argv),
+   pointing `core.hooksPath` at
    `<absolute common dir>/hooks`. **Every other invocation passes
    through unchanged.** It is a no-op on hosts with no global
    `core.hooksPath`. A host that installed the older `prek-shim.sh`

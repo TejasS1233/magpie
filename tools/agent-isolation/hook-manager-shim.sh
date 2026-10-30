@@ -106,17 +106,41 @@ fi
 # --- only rewrite the install action; everything else is transparent -------
 # A positional subcommand (`prek install`) is only the first argument. A
 # flag-style action (`overcommit --install`) may follow other options, so scan
-# the whole argv for it and its aliases (`overcommit -i`).
+# the whole argv for it and its aliases (`overcommit -i`). Option parsers such
+# as Ruby's OptionParser also take a single-letter alias inside a bundle of
+# short switches (`-fi`) and an unambiguous prefix of a long one (`--inst`),
+# so those count too; rewriting a non-install run only points core.hooksPath
+# at the repository's own hooks, which is harmless.
 install_invoked=0
 case "$install_subcommand" in
   -*)
     install_actions="${install_aliases:-$install_subcommand}"
     for _a in "$@"; do
       for _action in $install_actions; do
-        if [ "$_a" = "$_action" ]; then
-          install_invoked=1
-          break 2
-        fi
+        case "$_action" in
+          --*)
+            # Three letters at least (`--ins`); shorter prefixes may name another option.
+            if [ "${#_a}" -ge 5 ] && [ "${_action#"$_a"}" != "$_action" ]; then
+              install_invoked=1
+              break 2
+            fi
+            ;;
+          -?)
+            case "$_a" in
+              --*) ;;
+              -*"${_action#-}"*)
+                install_invoked=1
+                break 2
+                ;;
+            esac
+            ;;
+          *)
+            if [ "$_a" = "$_action" ]; then
+              install_invoked=1
+              break 2
+            fi
+            ;;
+        esac
       done
     done
     ;;

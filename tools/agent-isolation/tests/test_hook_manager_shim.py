@@ -122,6 +122,9 @@ def test_overcommit_install_help_passes_through(tmp_path: Path) -> None:
         ["-i"],
         ["--force", "--install"],
         ["--force", "-i"],
+        ["-fi"],
+        ["--inst"],
+        ["--force", "--insta"],
     ],
 )
 def test_overcommit_install_flag_is_found_anywhere(
@@ -138,6 +141,15 @@ def test_overcommit_install_flag_is_found_anywhere(
         "",
         "",
     ]
+
+
+@pytest.mark.parametrize("args", [["--run"], ["--uninstall"], ["--in"]])
+def test_overcommit_other_actions_pass_through(tmp_path: Path, args: list[str]) -> None:
+    env, argv = _setup(tmp_path, name="overcommit")
+    repo = _repo(tmp_path)
+    assert _run(env, repo, *args, name="overcommit").returncode == 0
+    assert argv.read_text().splitlines() == args
+    assert (tmp_path / "env").read_text().splitlines() == ["", "", "", "", ""]
 
 
 def test_overcommit_install_preserves_existing_git_config(tmp_path: Path) -> None:
