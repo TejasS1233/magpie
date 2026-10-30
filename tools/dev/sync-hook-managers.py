@@ -59,6 +59,7 @@ STRATEGIES = {"git-dir-flag", "hooks-path-env", "none"}
 
 _NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 _SUBCOMMAND = re.compile(r"^(?:--)?[a-z][a-z0-9-]*$")
+_ALIAS = re.compile(r"^--?[a-z][a-z0-9-]*$")
 _ENV = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _FLAG = re.compile(r"^--[a-z][a-z0-9-]*$")
 _DIR = re.compile(r"^[a-z][a-z0-9.-]*$")
@@ -114,18 +115,31 @@ def validate(registry: dict[str, Any]) -> list[str]:
                     f"({', '.join(sorted(STRATEGIES))})"
                 )
             if strategy != "none":
-                if not isinstance(install.get("subcommand"), str) or not _SUBCOMMAND.match(
-                    install["subcommand"]
-                ):
+                subcommand = install.get("subcommand")
+                if not isinstance(subcommand, str) or not _SUBCOMMAND.match(subcommand):
                     errors.append(f"{where}.install.subcommand: missing or not a word or --flag")
+                aliases = install.get("aliases")
+                if aliases is not None:
+                    if (
+                        not isinstance(aliases, list)
+                        or not aliases
+                        or not all(isinstance(alias, str) and _ALIAS.match(alias) for alias in aliases)
+                    ):
+                        errors.append(f"{where}.install.aliases: a non-empty list of flags")
+                    elif not isinstance(subcommand, str) or not subcommand.startswith("-"):
+                        errors.append(f"{where}.install.aliases: only a flag-style subcommand takes aliases")
+                    elif subcommand in aliases:
+                        errors.append(f"{where}.install.aliases: must not repeat the subcommand")
                 if strategy == "git-dir-flag" and not (
                     isinstance(install.get("flag"), str) and _FLAG.match(install["flag"])
                 ):
                     errors.append(
                         f"{where}.install.flag: git-dir-flag needs the long option that takes the git dir"
                     )
-            elif "flag" in install:
-                errors.append(f"{where}.install.flag: strategy 'none' takes no flag")
+            else:
+                for key in ("flag", "aliases"):
+                    if key in install:
+                        errors.append(f"{where}.install.{key}: strategy 'none' takes no {key}")
             if "runtime_env" in install and not isinstance(install["runtime_env"], bool):
                 errors.append(f"{where}.install.runtime_env: must be true or false")
             if install.get("runtime_env") and strategy != "hooks-path-env":
@@ -171,6 +185,9 @@ def render(registry: dict[str, Any]) -> dict[Path, str]:
         if install.get("strategy") == "none":
             continue
         fields = [f"install_subcommand={install['subcommand']}", f"install_strategy={install['strategy']}"]
+        if "aliases" in install:
+            actions = " ".join([install["subcommand"], *install["aliases"]])
+            fields.append(f"install_aliases='{actions}'")
         if "flag" in install:
             fields.append(f"install_flag={install['flag']}")
         cases.append(f"    {name}) {'; '.join(fields)} ;;\n")

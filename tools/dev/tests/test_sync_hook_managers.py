@@ -105,12 +105,39 @@ def test_overcommit_uses_its_flag_and_runtime_env(registry: dict[str, Any]) -> N
     assert "home" not in adapter
     assert adapter["install"] == {
         "subcommand": "--install",
+        "aliases": ["-i"],
         "strategy": "hooks-path-env",
         "runtime_env": True,
     }
     rendered = mod.render(registry)
-    assert "overcommit) install_subcommand=--install; install_strategy=hooks-path-env" in rendered[mod.SHIM]
+    assert (
+        "overcommit) install_subcommand=--install; install_strategy=hooks-path-env; "
+        "install_aliases='--install -i'" in rendered[mod.SHIM]
+    )
     assert 'hook_manager_runtime_envs="overcommit:overcommit"' in rendered[mod.DISPATCHER]
+
+
+@pytest.mark.parametrize(
+    ("aliases", "message"),
+    [
+        ([], "install.aliases: a non-empty list of flags"),
+        ("-i", "install.aliases: a non-empty list of flags"),
+        (["install"], "install.aliases: a non-empty list of flags"),
+        (["--install"], "install.aliases: must not repeat the subcommand"),
+    ],
+)
+def test_bad_install_aliases_are_refused(registry: dict[str, Any], aliases: object, message: str) -> None:
+    broken = copy.deepcopy(registry)
+    broken["adapters"]["overcommit"]["install"]["aliases"] = aliases
+    assert any(message in e for e in mod.validate(broken)), mod.validate(broken)
+
+
+def test_aliases_need_a_flag_style_subcommand(registry: dict[str, Any]) -> None:
+    broken = copy.deepcopy(registry)
+    broken["adapters"]["prek"]["install"]["aliases"] = ["-i"]
+    assert any("only a flag-style subcommand takes aliases" in e for e in mod.validate(broken)), mod.validate(
+        broken
+    )
 
 
 def test_a_manager_without_a_home_is_allowed(registry: dict[str, Any]) -> None:
@@ -139,6 +166,13 @@ def test_strategy_none_with_flag_is_refused(registry: dict[str, Any]) -> None:
     broken["adapters"]["simple-git-hooks"]["install"]["flag"] = "--git-dir"
     errors = mod.validate(broken)
     assert any("strategy 'none' takes no flag" in e for e in errors), errors
+
+
+def test_strategy_none_with_aliases_is_refused(registry: dict[str, Any]) -> None:
+    broken = copy.deepcopy(registry)
+    broken["adapters"]["simple-git-hooks"]["install"]["aliases"] = ["-i"]
+    errors = mod.validate(broken)
+    assert any("strategy 'none' takes no aliases" in e for e in errors), errors
 
 
 def _add_demo(tree: Path, registry: dict[str, Any]) -> None:

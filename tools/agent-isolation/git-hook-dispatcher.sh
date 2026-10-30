@@ -158,13 +158,22 @@ fi
 # with `git config --get core.hooksPath`. While the dispatcher chains into its
 # hook, that value must name the repository's own hooks dir, not the shared
 # one, or overcommit's self-update check fails. Entries: <name>:<hook marker>.
+# The override is exported, so git commands the hook starts inherit it. A
+# command aimed at another repository (a submodule, a temporary clone,
+# `git -C <other>`) then sees this repository's hooks path instead of the
+# target's dispatcher; only overcommit's self-check needs the value, so this
+# remains a documented limitation of the strategy (tools/hook-manager/README.md).
 apply_hook_manager_runtime_env() {
   for _entry in $hook_manager_runtime_envs; do
     _marker="${_entry#*:}"
     if grep -q -- "$_marker" "$local_hook" 2>/dev/null; then
-      export GIT_CONFIG_COUNT=1
-      export GIT_CONFIG_KEY_0=core.hooksPath
-      export GIT_CONFIG_VALUE_0="$common/hooks"
+      _i="${GIT_CONFIG_COUNT:-0}"
+      case "$_i" in
+        ''|*[!0-9]*) _i=0 ;;
+      esac
+      export "GIT_CONFIG_KEY_$_i=core.hooksPath"
+      export "GIT_CONFIG_VALUE_$_i=$common/hooks"
+      export GIT_CONFIG_COUNT=$((_i + 1))
     fi
   done
 }

@@ -67,14 +67,15 @@ A manager's install must put its hook in the repository's own `$(git rev-parse -
 - `--git-common-dir`, not `--git-dir`: a linked worktree shares its main checkout's hooks.
 
 The fix is an **install strategy**, applied by [`hook-manager-shim.sh`](../agent-isolation/hook-manager-shim.sh), installed as `~/.claude/bin/<tool>` ahead of the real binary on `PATH`.
-The shim takes the tool from the name it is installed under, rewrites only the install subcommand, and passes every other invocation through unchanged.
+The shim takes the tool from the name it is installed under, rewrites only the install action, and passes every other invocation through unchanged.
+A positional action (`prek install`) is only the first argument; a flag-style action (`overcommit --install`) and its registry aliases (`overcommit -i`) are found anywhere in argv.
 It leaves the install alone when the caller already chose a target, asked for help, or is not in a git work tree.
 
 | Strategy | What the shim does | Status |
 |---|---|---|
 | `git-dir-flag` | Inserts `<flag> <common dir>` after the install subcommand (prek: `--git-dir`; prek refuses a bare install while a global `core.hooksPath` is set). | implemented |
 | `hide-global-config` | Runs the install with `GIT_CONFIG_GLOBAL=/dev/null`, for a manager that writes to the common dir but refuses while a global `core.hooksPath` is set (pre-commit, lefthook). | planned |
-| `hooks-path-env` | Runs the install with `GIT_CONFIG_COUNT=1`, `GIT_CONFIG_KEY_0=core.hooksPath`, `GIT_CONFIG_VALUE_0=<common dir>/hooks`, for a manager that writes into whatever `core.hooksPath` names (overcommit, CaptainHook). The value must be that absolute path: git treats an empty `core.hooksPath` as set, and hooks then resolve against the filesystem root. | implemented |
+| `hooks-path-env` | Runs the install with `core.hooksPath=<common dir>/hooks` in the next free `GIT_CONFIG_*` slot, preserving a caller's existing entries, for a manager that writes into whatever `core.hooksPath` names (overcommit, CaptainHook). The value must be that absolute path: git treats an empty `core.hooksPath` as set, and hooks then resolve against the filesystem root. The run-time override is exported, so git commands the chained hook starts inherit it, including ones aimed at another repository; only the manager's self-check needs it, so that leak is a known limitation. | implemented |
 | `none` | The manager already writes to the repository's own hooks directory whatever the global value (simple-git-hooks, cargo-husky, the JGit-based Maven plugins). | implemented |
 
 A manager whose install the shim cannot reach (one run from `node_modules/.bin` by an npm script, from `vendor/bin` by a composer plugin, or from a `build.rs`, all ahead of `~/.claude/bin` or off `PATH` entirely) needs a strategy outside the shim, and a manager that writes a repository-level `core.hooksPath` itself (husky on every `npm install`) needs the dispatcher to chain to that directory instead; the adapter issues name the candidates.
@@ -126,7 +127,8 @@ The two YAML names are shared with pre-commit, so a repository with one uses bot
 | `detect.config_files` | The config file names that say a repository uses it (bare names, no directories). |
 | `detect.nested` | Whether a tracked config below the root counts (rule 2 of [Detection](#detection)). |
 | `detect.hook_marker` | Text every hook the manager installs contains (rule 3). |
-| `install.subcommand` | The subcommand the shim rewrites. |
+| `install.subcommand` | The subcommand or flag the shim rewrites. |
+| `install.aliases` | Other spellings of a flag-style subcommand (`overcommit`: `-i`), matched anywhere in argv. |
 | `install.strategy` | One of the install strategies above. |
 | `install.flag` | For `git-dir-flag`: the long option that takes the git directory. |
 | `install.runtime_env` | For `hooks-path-env`: also give every hook run the same `core.hooksPath` override, so a manager that re-checks its install at run time accepts the chained hook. |
@@ -151,7 +153,7 @@ Its operations are carried out by the scripts generated from the registry:
 
 | Operation | Run by | Invocation | Behaviour |
 |---|---|---|---|
-| Install rewrite | [`hook-manager-shim.sh`](../agent-isolation/hook-manager-shim.sh), installed as `~/.claude/bin/<tool>` | `<tool> <install.subcommand> [args…]`, e.g. `prek install` or `overcommit --install` | Applies the adapter's install strategy — for prek, runs `prek install --git-dir <absolute common dir> [args…]`; for overcommit, runs `overcommit --install` with `core.hooksPath` pointed at `<absolute common dir>/hooks`. Left unchanged when `args` already carry the target flag or `-h` / `--help`, or outside a git work tree. Every other subcommand passes through to the real binary, the next `<tool>` on `PATH` that is not the shim. Exits 127 when the name it is installed under has no adapter or no real binary is found. |
+| Install rewrite | [`hook-manager-shim.sh`](../agent-isolation/hook-manager-shim.sh), installed as `~/.claude/bin/<tool>` | `<tool> <install.subcommand> [args…]`, e.g. `prek install` or `overcommit --install` (also `-i`, or after other options) | Applies the adapter's install strategy — for prek, runs `prek install --git-dir <absolute common dir> [args…]`; for overcommit, runs `overcommit --install` or `-i` with `core.hooksPath` pointed at `<absolute common dir>/hooks`, appending to any existing `GIT_CONFIG_*` entries. Left unchanged when `args` already carry the target flag or `-h` / `--help`, or outside a git work tree. Every other subcommand passes through to the real binary, the next `<tool>` on `PATH` that is not the shim. Exits 127 when the name it is installed under has no adapter or no real binary is found. |
 | Host home and run-time override | [`git-hook-dispatcher.sh`](../agent-isolation/git-hook-dispatcher.sh), from `~/.claude/git-hooks/` | Every hook git runs, before it chains to the repository's own hook | Outside the sandbox (no `SANDBOX_RUNTIME`), exports `<home.env>=~/.local/share/<home.host>` for every registered manager unless the operator's value lies outside `~/.cache`, and moves `XDG_CACHE_HOME` to `~/.local/share/prek-host/cache` by the same rule. Sandboxed hooks keep their values. Before chaining to a hook whose marker matches an adapter with `install.runtime_env`, exports the same `core.hooksPath` override the shim used, so the manager's own run-time check accepts the hook. |
 | Home check | [`sandbox-lint`](../sandbox-lint/) | `uv run --project tools/sandbox-lint sandbox-lint` | Fails a settings file whose `permissions.deny` lacks `Edit(<home.default>/**)` for any registered manager, and, for a project that uses a manager (see [Detection](#detection)), one whose `env.<home.env>` is missing or overlaps the default home. |
 | Registry sync | [`tools/dev/sync-hook-managers.py`](../dev/sync-hook-managers.py) | `tools/dev/sync-hook-managers.py [--check]`; the `sync-hook-managers` prek hook | Validates `registry.json`, rewrites the generated blocks of the three scripts above, and checks the committed settings and the sandbox-lint baseline. Exits 1 when a block changed (re-stage and commit), or, with `--check`, when one would. |
@@ -178,7 +180,7 @@ What a repository or an operator configures is where each manager's environments
 | `git-build-hook` | Java | `none`; detected by `pom.xml` (nested too) or a hook mentioning `git-build-hook` | none (no external home) | shipping (JGit `getGitDir()` targets `<worktree>/hooks` in linked worktrees; `configure` goal can set repo-local `core.hooksPath`) |
 | `git-code-format-maven-plugin` | Java | `none`; detected by `pom.xml` (nested too) or a hook mentioning `git-code-format-maven-plugin` | none (no external home) | shipping (JGit `getCommonDirectory()` targets common hooks dir, coexisting cleanly in linked worktrees) |
 | `prek` | Rust | `git-dir-flag` (`--git-dir`); detected by `prek.toml`, `.pre-commit-config.yaml` or `.pre-commit-config.yml` (nested too) or a hook mentioning `prek` | `PREK_HOME`: `~/.cache/prek` → sandbox `~/.cache/prek-sandbox`, host `~/.local/share/prek-host` | shipping |
-| `overcommit` | Ruby | `hooks-path-env` (`--install`); detected by `.overcommit.yml` or a hook mentioning `overcommit` | none — it keeps its own state in git config and the repository | shipping |
+| `overcommit` | Ruby | `hooks-path-env` (`--install`, alias `-i`, found anywhere in argv); detected by `.overcommit.yml` or a hook mentioning `overcommit` | none — it keeps its own state in git config and the repository | shipping |
 | `simple-git-hooks` | JavaScript | `none`; detected by `package.json`, `.simple-git-hooks.{js,cjs,json}`, `simple-git-hooks.{js,cjs,json}` or a hook mentioning `simple-git-hooks` | none (no external home) | shipping |
 
 *Ecosystem notes:*

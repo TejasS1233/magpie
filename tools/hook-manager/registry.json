@@ -78,6 +78,9 @@
       },
       "install": {
         "subcommand": "--install",
+        "aliases": [
+          "-i"
+        ],
         "strategy": "hooks-path-env",
         "runtime_env": true
       }
