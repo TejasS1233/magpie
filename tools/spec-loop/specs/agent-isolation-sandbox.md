@@ -391,8 +391,8 @@ See `docs/adapters/goose.md`.
   `git-code-format-maven-plugin` (#1838).
   overcommit's install action is a flag, so the shim finds it and its
   registry aliases (`-i`) anywhere in argv, not only first, including
-  inside a bundle of short switches (`-fi`) and as a long-flag prefix
-  of three letters or more (`--inst`); the
+  inside a bundle of short switches (`-fi`) and as any prefix of the
+  long flag (`--inst`); the
   exported run-time override reaches git commands the hook starts,
   including ones aimed at another repository, which is recorded as a
   known limitation of the strategy.

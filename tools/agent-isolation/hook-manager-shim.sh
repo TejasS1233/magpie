@@ -119,8 +119,8 @@ case "$install_subcommand" in
       for _action in $install_actions; do
         case "$_action" in
           --*)
-            # Three letters at least (`--ins`); shorter prefixes may name another option.
-            if [ "${#_a}" -ge 5 ] && [ "${_action#"$_a"}" != "$_action" ]; then
+            # Any prefix (`--i` on): fail closed, since a wrongly rewritten run is harmless.
+            if [ "${#_a}" -ge 3 ] && [ "${_action#"$_a"}" != "$_action" ]; then
               install_invoked=1
               break 2
             fi
